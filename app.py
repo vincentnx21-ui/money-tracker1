@@ -76,4 +76,22 @@ with tab3:
             new_balance_lend = current_balance - l_amount
             lend_entry = pd.DataFrame([{
                 "Date": datetime.now().strftime("%Y-%m-%d"),
-                "Item": f"LENT
+                "Item": f"LENT: {friend}", 
+                "Quantity": 1,
+                "Total Cost": l_amount, 
+                "Wallet Left": new_balance_lend, 
+                "Type": "Lend" # This triggers the reminder above!
+            }])
+            lend_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
+            st.rerun()
+
+with tab4:
+    # ... (Cash Audit logic)
+    st.subheader("Cash Audit")
+    # (Simplified for this example - count your cash here)
+    st.info("Use this tab to check if your physical wallet matches the App Balance above.")
+
+# --- HISTORY ---
+st.divider()
+st.header("📊 History")
+st.dataframe(log_df.iloc[::-1], use_container_width=True)
