@@ -9,7 +9,7 @@ log_file = "money_tracker.csv"
 user_file = "users.csv"
 ADMIN_PASSWORD = "123"
 
-st.set_page_config(page_title="School Money Tracker", layout="centered")
+st.set_page_config(page_title="Personal Finance Tracker", layout="centered")
 
 # --- UTILS ---
 def hash_password(password):
@@ -97,10 +97,9 @@ user = st.session_state.username
 user_log = log_df[log_df["User"] == user]
 balance = float(user_log["Wallet Left"].iloc[-1]) if not user_log.empty else 0.0
 
-st.title("💰 Personal Budget Tracker")
-st.metric("Balance", f"${balance:,.2f}")
+st.title("💰 Smart Budget Tracker")
+st.metric("App Balance", f"${balance:,.2f}")
 
-# Re-added the Lending and Audit tabs here
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🛒 Order", "💵 Top Up", "🤝 Lending", "🪙 Audit", "📊 History"])
 
 # --- TAB 1: ORDER ---
@@ -112,29 +111,29 @@ with tab1:
         s_sel = st.selectbox("Select Stall", ["-- Choose Stall --"] + stalls)
         if s_sel != "-- Choose Stall --":
             items_df = log_df[(log_df["Location"] == l_sel) & (log_df["Shop"] == s_sel)]
-            p_sel = st.selectbox("Select Food/Drink", ["-- Select Product --"] + sorted(items_df["Item"].unique().tolist()))
+            p_sel = st.selectbox("Select Product", ["-- Select Product --"] + sorted(items_df["Item"].unique().tolist()))
             if p_sel != "-- Select Product --":
                 price_match = items_df[(items_df["Item"] == p_sel) & (items_df["Type"] == "MenuSetup")]
                 u_price = float(price_match.iloc[-1]["Total Cost"]) if not price_match.empty else 0.0
-                st.info(f"Price per unit: ${u_price:.2f}")
+                st.info(f"Price: ${u_price:.2f}")
                 qty = st.number_input("Quantity", min_value=1)
-                if st.button("Buy Now", use_container_width=True):
+                if st.button("Confirm Purchase", use_container_width=True, type="primary"):
                     cost = u_price * qty
                     new_r = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "User": user, "Location": l_sel, "Shop": s_sel, "Item": p_sel, "Quantity": qty, "Total Cost": cost, "Wallet Left": balance - cost, "Type": "Spend"}])
                     new_r.to_csv(log_file, mode='a', index=False); st.rerun()
 
 # --- TAB 2: TOP UP ---
 with tab2:
-    t_amt = st.number_input("Top up amount", min_value=0.0)
+    t_amt = st.number_input("Amount to add", min_value=0.0)
     if st.button("Add Funds"):
         new_r = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "User": user, "Location": "N/A", "Shop": "N/A", "Item": "Deposit", "Quantity": 1, "Total Cost": 0, "Wallet Left": balance + t_amt, "Type": "TopUp"}])
         new_r.to_csv(log_file, mode='a', index=False); st.rerun()
 
 # --- TAB 3: MONEY LENDING ---
 with tab3:
-    st.subheader("Lend to Friends")
+    st.subheader("Lend Money")
     l_friend = st.text_input("Friend's Name")
-    l_amt = st.number_input("Lending Amount", min_value=0.0)
+    l_amt = st.number_input("Amount", min_value=0.0)
     if st.button("Record Loan"):
         if l_friend and l_amt > 0:
             new_r = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "User": user, "Location": "N/A", "Shop": "N/A", "Item": f"LENT: {l_friend}", "Quantity": 1, "Total Cost": l_amt, "Wallet Left": balance - l_amt, "Type": "Lend"}])
@@ -143,36 +142,51 @@ with tab3:
 # --- TAB 4: MONEY AUDIT ---
 with tab4:
     st.subheader("Physical Cash Audit")
-    st.write("Count your physical cash to see if it matches the app.")
+    st.write("Enter the quantity for each denomination:")
+    
     col1, col2 = st.columns(2)
     with col1:
-        v10 = st.number_input("$10 bills", 0)
-        v5 = st.number_input("$5 bills", 0)
-        v2 = st.number_input("$2 bills", 0)
-    with col2:
-        v1 = st.number_input("$1 coins", 0)
-        v05 = st.number_input("50¢ coins", 0)
-        v02 = st.number_input("20¢ coins", 0)
+        st.write("**Bills**")
+        n100 = st.number_input("$100 Bills", 0, step=1)
+        n50 = st.number_input("$50 Bills", 0, step=1)
+        n10 = st.number_input("$10 Bills", 0, step=1)
+        n5 = st.number_input("$5 Bills", 0, step=1)
+        n2 = st.number_input("$2 Bills", 0, step=1)
     
-    total_physical = (v10*10) + (v5*5) + (v2*2) + (v1*1) + (v05*0.5) + (v02*0.2)
+    with col2:
+        st.write("**Coins**")
+        c1 = st.number_input("$1 Coins", 0, step=1)
+        c50 = st.number_input("50¢ Coins", 0, step=1)
+        c20 = st.number_input("20¢ Coins", 0, step=1)
+        c10 = st.number_input("10¢ Coins", 0, step=1)
+        c5 = st.number_input("5¢ Coins", 0, step=1)
+        c01 = st.number_input("1¢ Coins", 0, step=1)
+    
+    # Calculation
+    total_phys = (n100*100) + (n50*50) + (n10*10) + (n5*5) + (n2*2) + \
+                 (c1*1) + (c50*0.5) + (c20*0.2) + (c10*0.1) + (c5*0.05) + (c01*0.01)
+    
     st.divider()
-    st.write(f"### Total Physical: ${total_physical:.2f}")
-    diff = total_physical - balance
-    if diff == 0:
-        st.success("Perfect! Your cash matches your app.")
+    st.write(f"### Total Physical Cash: ${total_phys:.2f}")
+    diff = total_phys - balance
+    
+    if abs(diff) < 0.01:
+        st.success("Perfect! Your physical cash matches your digital record.")
     elif diff > 0:
-        st.warning(f"You have ${diff:.2f} more than the app thinks.")
+        st.warning(f"Surplus: You have ${diff:.2f} more than recorded.")
     else:
-        st.error(f"You are missing ${abs(diff):.2f} in physical cash.")
+        st.error(f"Shortage: You are missing ${abs(diff):.2f} from your cash.")
 
 # --- TAB 5: HISTORY ---
-with tab3: # Note: tab5 in the list above, index logic check
-    pass # Managed via the list in the tab declaration
-
 with tab5:
     if not user_log.empty:
-        history = user_log[user_log["Type"].isin(["Spend", "TopUp", "Lend"])]
-        st.dataframe(history.iloc[::-1], use_container_width=True)
-        to_del = st.multiselect("Delete Mistakes", options=history.index)
-        if st.button("Delete Entries"):
-            log_df.drop(to_del).to_csv(log_file, index=False); st.rerun()
+        # Show only actual transactions for the user
+        h_data = user_log[user_log["Type"].isin(["Spend", "TopUp", "Lend"])]
+        st.dataframe(h_data.iloc[::-1], use_container_width=True)
+        
+        to_del = st.multiselect("Select transactions to remove:", options=h_data.index, 
+                                format_func=lambda x: f"{log_df.loc[x, 'Date']} - {log_df.loc[x, 'Item']} (${log_df.loc[x, 'Total Cost']})")
+        
+        if st.button("Delete Selected Transactions", type="secondary"):
+            log_df.drop(to_del).to_csv(log_file, index=False)
+            st.rerun()
