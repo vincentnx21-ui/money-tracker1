@@ -10,7 +10,7 @@ user_file = "users.csv"
 SUPER_USER = "Vincent21"
 SUPER_PASS = "3123" 
 
-st.set_page_config(page_title="Vincent's Tracker", layout="centered")
+st.set_page_config(page_title="Vincent's Tracker", layout="wide")
 
 # --- UTILS ---
 def hash_password(password):
@@ -47,12 +47,10 @@ if not st.session_state.logged_in:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
         if st.button("Log In"):
-            # 1. Check for Super User
             if u == SUPER_USER and p == SUPER_PASS:
                 st.session_state.logged_in = True
                 st.session_state.username = u
                 st.rerun()
-            # 2. Check standard users
             else:
                 row = user_df[user_df["Username"] == u]
                 if not row.empty and check_password(p, row.iloc[0]["Password"]):
@@ -84,11 +82,19 @@ with st.sidebar:
     
     st.divider()
     
-    # --- RESTRICTED ADMIN SECTION ---
-    # This block is ONLY rendered if the user is Vincent21
+    # --- SUPERADMIN DASHBOARD & SETTINGS ---
     if user == SUPER_USER:
-        with st.expander("🛠️ Administration Entry"):
-            st.subheader("Master Menu Setup")
+        with st.expander("🛠️ Superadmin Dashboard"):
+            st.subheader("👥 Registered Users")
+            st.table(user_df) # Shows usernames and hashed passwords
+            
+            st.subheader("📜 Global Activity Log")
+            # Shows every transaction from every user
+            global_activity = log_df[log_df["Type"] != "MenuSetup"]
+            st.dataframe(global_activity.iloc[::-1], use_container_width=True)
+            
+            st.divider()
+            st.subheader("🍱 Master Menu Setup")
             a_loc = st.text_input("Location")
             a_stall = st.text_input("Stall")
             a_item = st.text_input("Product")
@@ -103,9 +109,7 @@ with st.sidebar:
                     }])
                     setup_row.to_csv(log_file, mode='a', index=False); st.success("Saved!"); st.rerun()
             
-            st.divider()
-            if st.button("🧨 Wipe All Transactions", type="primary"):
-                # Deletes spending but keeps the menu setup
+            if st.button("🧨 Wipe All User Data", type="primary"):
                 keep_menu = log_df[log_df["Type"] == "MenuSetup"]
                 keep_menu.to_csv(log_file, index=False); st.rerun()
 
@@ -113,7 +117,7 @@ with st.sidebar:
 user_log = log_df[log_df["User"] == user]
 balance = float(user_log["Wallet Left"].iloc[-1]) if not user_log.empty else 0.0
 
-st.title("💰 Budget Tracker")
+st.title(f"💰 {user}'s Dashboard")
 st.metric("My Balance", f"${balance:,.2f}")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🛒 Order", "💵 Top Up", "🤝 Lending", "🪙 Audit", "📊 History"])
@@ -166,7 +170,6 @@ with tab4:
         c10 = st.number_input("10¢", 0); c5 = st.number_input("5¢", 0); c01 = st.number_input("1¢", 0)
     total_phys = (n100*100)+(n50*50)+(n10*10)+(n5*5)+(n2*2)+(c1*1)+(c50*0.5)+(c20*0.2)+(c10*0.1)+(c5*0.05)+(c01*0.01)
     st.write(f"### Cash on Hand: ${total_phys:.2f}")
-    st.write(f"Difference: ${total_phys - balance:.2f}")
 
 # History Tab
 with tab5:
