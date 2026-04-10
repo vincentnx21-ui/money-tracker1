@@ -6,7 +6,7 @@ import os
 # File names
 log_file = "money_tracker.csv"
 
-st.set_page_config(page_title="Auto-Learning Budget", layout="centered")
+st.set_page_config(page_title="Auto-Budget Tracker", layout="centered")
 
 # --- DATABASE HELPER ---
 def load_data(file, columns):
@@ -40,7 +40,8 @@ current_balance = float(log_df["Wallet Left"].iloc[-1]) if not log_df.empty else
 st.title("💰 Smart Money Tracker")
 st.metric("App Balance", f"${current_balance:,.2f}")
 
-tab1, tab2, tab3 = st.tabs(["🛒 Log Purchase", "💵 Top Up", "🪙 Cash Audit"])
+# Added "🤝 Lend Money" tab
+tab1, tab2, tab3, tab4 = st.tabs(["🛒 Log Purchase", "💵 Top Up", "🤝 Lend Money", "🪙 Cash Audit"])
 
 with tab1:
     st.subheader("Purchase")
@@ -86,47 +87,3 @@ with tab2:
         st.rerun()
 
 with tab3:
-    st.subheader("Physical Cash Count")
-    st.write("Enter how many of each you have in your wallet:")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        # Bills
-        n100 = st.number_input("$100 Bills", min_value=0, step=1)
-        n50 = st.number_input("$50 Bills", min_value=0, step=1)
-        n10 = st.number_input("$10 Bills", min_value=0, step=1)
-        n5 = st.number_input("$5 Bills", min_value=0, step=1)
-        n2 = st.number_input("$2 Bills", min_value=0, step=1)
-    
-    with col2:
-        # Coins (Simplified to Dollars for math)
-        c50 = st.number_input("50¢ Coins", min_value=0, step=1)
-        c20 = st.number_input("20¢ Coins", min_value=0, step=1)
-        c10 = st.number_input("10¢ Coins", min_value=0, step=1)
-        c05 = st.number_input("5¢ Coins", min_value=0, step=1)
-        c01 = st.number_input("1¢ Coins", min_value=0, step=1)
-
-    # Calculate Total
-    physical_total = (n100*100) + (n50*50) + (n10*10) + (n5*5) + (n2*2) + \
-                     (c50*0.50) + (c20*0.20) + (c10*0.10) + (c05*0.05) + (c01*0.01)
-
-    st.divider()
-    st.write(f"### Total Cash in Hand: **${physical_total:.2f}**")
-    
-    difference = physical_total - current_balance
-    
-    if abs(difference) < 0.01:
-        st.success("✅ Perfect! Your physical cash matches the app.")
-    elif difference > 0:
-        st.warning(f"🤔 You have **${difference:.2f} more** than the app says. Did you find money?")
-    else:
-        st.error(f"❌ You are **${abs(difference):.2f} short**. Did you forget to log a purchase?")
-
-# --- HISTORY ---
-st.divider()
-st.header("📊 History")
-if not log_df.empty:
-    st.dataframe(log_df.iloc[::-1], use_container_width=True)
-    if st.button("🧨 Wipe All Data"):
-        if os.path.exists(log_file): os.remove(log_file)
-        st.rerun()
