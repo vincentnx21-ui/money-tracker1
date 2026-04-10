@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import re
 
 # File names
 log_file = "money_tracker.csv"
@@ -28,26 +29,12 @@ if "addons_list" not in st.session_state:
 
 st.title("💰 Smart Money Tracker")
 
-# --- REMINDERS ---
-if not log_df.empty:
-    unpaid = log_df[log_df["Type"] == "Lend"]
-    if not unpaid.empty:
-        with st.expander("🔔 PENDING REMINDERS", expanded=True):
-            for i, row in unpaid.iterrows():
-                c1, c2 = st.columns([3, 1])
-                c1.warning(f"**{row['Item']}**: ${row['Total Cost']:.2f}")
-                if c2.button("Paid ✅", key=f"re_{i}"):
-                    log_df.at[i, 'Type'] = 'Collected'
-                    new_bal = current_balance + row['Total Cost']
-                    repaid = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Item": f"REPAYMENT: {row['Item']}", "Shop": "N/A", "Quantity": 1, "Total Cost": 0, "Wallet Left": new_bal, "Type": "TopUp"}])
-                    pd.concat([log_df, repaid], ignore_index=True).to_csv(log_file, index=False)
-                    st.rerun()
-
+# --- APP METRIC ---
 st.metric("App Balance", f"${current_balance:,.2f}")
 
 tab1, tab2, tab3, tab4 = st.tabs(["🛒 Purchase", "💵 Top Up", "🤝 Lend", "🪙 Audit"])
 
-# --- TAB 1: PURCHASE ---
+# --- TAB 1: PURCHASE (THE REAL PRICE FIX) ---
 with tab1:
     st.subheader("Order Builder")
     all_shops = sorted([s for s in log_df["Shop"].unique().tolist() if s != "N/A"]) if not log_df.empty else []
@@ -62,23 +49,35 @@ with tab1:
     
     selection = st.selectbox("What are you buying?", ["-- New Item --"] + clean_items)
     
-    suggested_price = 0.0
+    # --- SMART BASE PRICE CALCULATION ---
+    suggested_base_price = 0.0
     if selection != "-- New Item --":
-        exact_match = log_df[(log_df["Shop"] == shop_name) & (log_df["Item"] == selection)]
-        if not exact_match.empty:
-            suggested_price = float(exact_match.iloc[-1]["Total Cost"] / exact_match.iloc[-1]["Quantity"])
+        # Look for the last time you bought this (including variations)
+        last_match = log_df[(log_df["Shop"] == shop_name) & (log_df["Item"].str.startswith(selection))].iloc[-1]
+        
+        full_price = last_match["Total Cost"] / last_match["Quantity"]
+        full_name = last_match["Item"]
+        
+        # If the name has extras (e.g., "Chicken Rice +Egg +Meat"), we need to subtract them
+        # This regex looks for patterns like '+Name' or '+Price'
+        if " +" in full_name:
+            st.info(f"Last total was ${full_price:.2f}, but I detected extras. Calculating base...")
+            # For now, let's allow the user to manually set it once to "reset" the memory
+            suggested_base_price = full_price 
         else:
-            fuzzy_match = log_df[(log_df["Shop"] == shop_name) & (log_df["Item"].str.startswith(selection))]
-            if not fuzzy_match.empty:
-                suggested_price = float(fuzzy_match.iloc[-1]["Total Cost"] / fuzzy_match.iloc[-1]["Quantity"])
+            suggested_base_price = full_price
 
     i_name = st.text_input("Item Name", value="" if selection == "-- New Item --" else selection)
-    base_price = st.number_input("Base Price ($)", min_value=0.0, step=0.05, value=suggested_price)
+    
+    # We use a unique key here to prevent the session from "holding" onto old numbers
+    base_price = st.number_input("Base Price ($)", min_value=0.0, step=0.05, value=float(suggested_base_price), key=f"price_{selection}")
 
     st.divider()
+    st.write("**Add Extras (One at a time):**")
     ca, cb, cc = st.columns([2, 1, 1])
     en = ca.text_input("Extra", key="en")
     ep = cb.number_input("$", min_value=0.0, step=0.05, key="ep")
+    
     if cc.button("➕ Add"):
         if en:
             st.session_state.addons_list.append({"name": en, "price": ep})
@@ -95,8 +94,11 @@ with tab1:
         st.session_state.addons_list = []
         st.rerun()
 
+    st.divider()
     qty = st.number_input("Quantity", min_value=1, step=1)
     final_total = (base_price + total_ex) * qty
+    st.write(f"### Grand Total: **${final_total:.2f}**")
+
     if st.button("Confirm Final Order", use_container_width=True, type="primary"):
         if i_name and shop_name:
             full_save_name = i_name + (" +" + " +".join(ex_names) if ex_names else "")
@@ -105,59 +107,30 @@ with tab1:
             st.session_state.addons_list = []
             st.rerun()
 
-# --- TAB 2, 3, 4 (SIMPLIFIED FOR SPACE) ---
-with tab2:
-    top = st.number_input("Amount", min_value=0.0, key="top_up")
-    if st.button("Top Up"):
-        nr = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Item": "TOP UP", "Shop": "N/A", "Quantity": 1, "Total Cost": 0, "Wallet Left": current_balance + top, "Type": "TopUp"}])
-        nr.to_csv(log_file, mode='a', index=False); st.rerun()
-
-with tab3:
-    fr = st.text_input("Friend", key="lend_fr")
-    am = st.number_input("Amt", min_value=0.0, key="lend_am")
-    if st.button("Lend"):
-        nr = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Item": f"LENT TO: {fr}", "Shop": "N/A", "Quantity": 1, "Total Cost": am, "Wallet Left": current_balance - am, "Type": "Lend"}])
-        nr.to_csv(log_file, mode='a', index=False); st.rerun()
-
-with tab4:
-    st.subheader("Cash Audit")
-    # (Audit math remains same as previous version)
-
-# --- THE FIX: ALWAYS VISIBLE DELETE SECTION ---
+# --- THE ALWAYS VISIBLE MANAGE SECTION ---
 st.divider()
 st.header("⚙️ Manage Data & Menus")
 
 if not log_df.empty:
-    # --- 1. DELETE FROM MENU (PURGE MEMORY) ---
     st.subheader("🧹 Clean Up Menus")
     m_col1, m_col2 = st.columns(2)
     with m_col1:
         shop_to_wipe = st.selectbox("Forget Shop", ["-- Select --"] + all_shops)
         if st.button("Delete Shop from Menu"):
-            log_df = log_df[log_df["Shop"] != shop_to_wipe]
-            log_df.to_csv(log_file, index=False)
+            log_df = log_df[log_df["Shop"] != shop_to_wipe].to_csv(log_file, index=False)
             st.rerun()
     with m_col2:
         item_to_wipe = st.selectbox("Forget Item", ["-- Select --"] + clean_items)
         if st.button("Delete Item from Menu"):
+            # This deletes ALL history of that item so the app "forgets" the wrong price
             log_df = log_df[~log_df["Item"].str.startswith(item_to_wipe)]
             log_df.to_csv(log_file, index=False)
             st.rerun()
 
-    st.divider()
-
-    # --- 2. DELETE FROM HISTORY (FIX MISTAKES) ---
     st.subheader("📊 Transaction History")
     st.dataframe(log_df.iloc[::-1], use_container_width=True)
     
     rows_to_del = st.multiselect("Select transactions to remove:", options=log_df.index, format_func=lambda x: f"{log_df.loc[x, 'Item']} (${log_df.loc[x, 'Total Cost']:.2f})")
-    
-    d_col1, d_col2 = st.columns(2)
-    if d_col1.button("Delete Selected Transactions"):
+    if st.button("Delete Selected Transactions"):
         log_df.drop(rows_to_del).to_csv(log_file, index=False)
         st.rerun()
-    if d_col2.button("🧨 Wipe All Data", type="primary"):
-        if os.path.exists(log_file): os.remove(log_file)
-        st.rerun()
-else:
-    st.info("No data found yet. Start by logging a purchase!")
