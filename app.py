@@ -40,7 +40,6 @@ current_balance = float(log_df["Wallet Left"].iloc[-1]) if not log_df.empty else
 st.title("💰 Smart Money Tracker")
 st.metric("App Balance", f"${current_balance:,.2f}")
 
-# Added "🤝 Lend Money" tab
 tab1, tab2, tab3, tab4 = st.tabs(["🛒 Log Purchase", "💵 Top Up", "🤝 Lend Money", "🪙 Cash Audit"])
 
 with tab1:
@@ -63,27 +62,8 @@ with tab1:
     total_cost = qty * unit_price
     new_balance_spend = current_balance - total_cost
 
-    if st.button("Confirm Purchase", use_container_width=True):
+    if st.button("Confirm Purchase", key="buy_btn", use_container_width=True):
         if item_name:
             new_entry = pd.DataFrame([{
                 "Date": datetime.now().strftime("%Y-%m-%d"),
-                "Item": item_name, "Quantity": qty,
-                "Total Cost": total_cost, "Wallet Left": new_balance_spend, "Type": "Spend"
-            }])
-            new_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
-            st.rerun()
-
-with tab2:
-    st.subheader("Add Money")
-    top_up_amount = st.number_input("Amount to add ($)", min_value=0.0, step=1.0)
-    if st.button("Confirm Top Up", use_container_width=True):
-        topup_entry = pd.DataFrame([{
-            "Date": datetime.now().strftime("%Y-%m-%d"),
-            "Item": "CASH TOP UP", "Quantity": 1,
-            "Total Cost": 0, "Wallet Left": current_balance + top_up_amount, "Type": "TopUp"
-        }])
-        topup_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
-        st.balloons()
-        st.rerun()
-
-with tab3:
+                "Item": item_
