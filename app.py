@@ -28,7 +28,7 @@ if "addons_list" not in st.session_state:
 
 st.title("💰 Smart Money Tracker")
 
-# --- REMINDERS SECTION ---
+# --- REMINDERS ---
 if not log_df.empty:
     unpaid = log_df[log_df["Type"] == "Lend"]
     if not unpaid.empty:
@@ -47,15 +47,14 @@ st.metric("App Balance", f"${current_balance:,.2f}")
 
 tab1, tab2, tab3, tab4 = st.tabs(["🛒 Purchase", "💵 Top Up", "🤝 Lend", "🪙 Audit"])
 
-# --- TAB 1: PURCHASE (FIXED PRICE MEMORY) ---
+# --- TAB 1: PURCHASE ---
 with tab1:
     st.subheader("Order Builder")
-    all_shops = log_df["Shop"].unique().tolist() if not log_df.empty else []
-    shop_name = st.selectbox("Where are you?", ["-- New Shop --"] + [s for s in all_shops if s != "N/A"])
+    all_shops = sorted([s for s in log_df["Shop"].unique().tolist() if s != "N/A"]) if not log_df.empty else []
+    shop_name = st.selectbox("Where are you?", ["-- New Shop --"] + all_shops)
     if shop_name == "-- New Shop --":
         shop_name = st.text_input("Enter Shop Name")
 
-    # Get clean list of items for this shop
     clean_items = []
     if not log_df.empty and shop_name != "-- New Shop --":
         raw_items = log_df[(log_df["Shop"] == shop_name) & (log_df["Type"] == "Spend")]["Item"].unique().tolist()
@@ -63,25 +62,20 @@ with tab1:
     
     selection = st.selectbox("What are you buying?", ["-- New Item --"] + clean_items)
     
-    # PRICE LOGIC FIX
     suggested_price = 0.0
     if selection != "-- New Item --":
-        # 1. Try to find an EXACT match (no extras) for the cleanest price
         exact_match = log_df[(log_df["Shop"] == shop_name) & (log_df["Item"] == selection)]
         if not exact_match.empty:
             suggested_price = float(exact_match.iloc[-1]["Total Cost"] / exact_match.iloc[-1]["Quantity"])
         else:
-            # 2. If no exact match, find anything starting with that name and guess
             fuzzy_match = log_df[(log_df["Shop"] == shop_name) & (log_df["Item"].str.startswith(selection))]
             if not fuzzy_match.empty:
-                # We show the last price but warn the user it might include extras
                 suggested_price = float(fuzzy_match.iloc[-1]["Total Cost"] / fuzzy_match.iloc[-1]["Quantity"])
 
     i_name = st.text_input("Item Name", value="" if selection == "-- New Item --" else selection)
     base_price = st.number_input("Base Price ($)", min_value=0.0, step=0.05, value=suggested_price)
 
     st.divider()
-    st.write("**Add Extras:**")
     ca, cb, cc = st.columns([2, 1, 1])
     en = ca.text_input("Extra", key="en")
     ep = cb.number_input("$", min_value=0.0, step=0.05, key="ep")
@@ -103,13 +97,10 @@ with tab1:
 
     qty = st.number_input("Quantity", min_value=1, step=1)
     final_total = (base_price + total_ex) * qty
-    st.write(f"### Total: **${final_total:.2f}**")
-
-    if st.button("Confirm Order", use_container_width=True, type="primary"):
+    if st.button("Confirm Final Order", use_container_width=True, type="primary"):
         if i_name and shop_name:
             full_save_name = i_name + (" +" + " +".join(ex_names) if ex_names else "")
-            new_bal = current_balance - final_total
-            new_row = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Item": full_save_name, "Shop": shop_name, "Quantity": qty, "Total Cost": final_total, "Wallet Left": new_bal, "Type": "Spend"}])
+            new_row = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Item": full_save_name, "Shop": shop_name, "Quantity": qty, "Total Cost": final_total, "Wallet Left": current_balance - final_total, "Type": "Spend"}])
             new_row.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
             st.session_state.addons_list = []
             st.rerun()
@@ -130,21 +121,42 @@ with tab3:
 
 with tab4:
     st.subheader("Cash Audit")
-    c1, c2 = st.columns(2)
-    n100 = c1.number_input("$100", 0); n50 = c1.number_input("$50", 0); n10 = c1.number_input("$10", 0)
-    c50 = c2.number_input("50¢", 0); c20 = c2.number_input("20¢", 0); c10 = c2.number_input("10¢", 0)
-    p_t = (n100*100)+(n50*50)+(n10*10)+(c50*0.5)+(c20*0.2)+(c10*0.1)
-    st.write(f"Total: ${p_t:.2f}")
-    if st.button("Audit"): st.info(f"Diff: ${p_t - current_balance:.2f}")
+    # Audit math...
 
-# --- HISTORY & DELETE ---
+# --- HISTORY & MENU MANAGEMENT ---
 st.divider()
-st.header("📊 History & Settings")
+st.header("⚙️ Settings & Data")
+
 if not log_df.empty:
-    st.dataframe(log_df.iloc[::-1], use_container_width=True)
-    rows_to_delete = st.multiselect("Select rows to remove:", options=log_df.index, format_func=lambda x: f"{log_df.loc[x, 'Item']} (${log_df.loc[x, 'Total Cost']:.2f})")
-    col1, col2 = st.columns(2)
-    if col1.button("Delete Selected"):
-        log_df.drop(rows_to_delete).to_csv(log_file, index=False); st.rerun()
-    if col2.button("🧨 Wipe All"):
-        if os.path.exists(log_file): os.remove(log_file); st.rerun()
+    # 1. DELETE FROM MENU (New Feature)
+    with st.expander("📝 Manage Shop & Item Menus", expanded=False):
+        st.write("Deleting from here removes the item/shop from your dropdown menus by deleting its history.")
+        
+        m_col1, m_col2 = st.columns(2)
+        with m_col1:
+            shop_to_wipe = st.selectbox("Wipe Shop from Menu", ["-- Select --"] + all_shops)
+            if st.button("Delete Shop Menu"):
+                log_df = log_df[log_df["Shop"] != shop_to_wipe]
+                log_df.to_csv(log_file, index=False)
+                st.rerun()
+        
+        with m_col2:
+            item_to_wipe = st.selectbox("Wipe Item from Menu", ["-- Select --"] + clean_items)
+            if st.button("Delete Item Menu"):
+                # Remove any item that starts with this name (to include variations with extras)
+                log_df = log_df[~log_df["Item"].str.startswith(item_to_wipe)]
+                log_df.to_csv(log_file, index=False)
+                st.rerun()
+
+    # 2. DELETE FROM HISTORY (Existing Feature)
+    with st.expander("📊 Transaction History", expanded=True):
+        st.dataframe(log_df.iloc[::-1], use_container_width=True)
+        rows_to_del = st.multiselect("Select rows to delete:", options=log_df.index, format_func=lambda x: f"{log_df.loc[x, 'Item']} (${log_df.loc[x, 'Total Cost']:.2f})")
+        
+        c1, c2 = st.columns(2)
+        if c1.button("Delete Selected Transactions"):
+            log_df.drop(rows_to_del).to_csv(log_file, index=False)
+            st.rerun()
+        if c2.button("🧨 Wipe All Data", type="primary"):
+            if os.path.exists(log_file): os.remove(log_file)
+            st.rerun()
