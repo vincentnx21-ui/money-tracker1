@@ -66,4 +66,75 @@ with tab1:
         if item_name:
             new_entry = pd.DataFrame([{
                 "Date": datetime.now().strftime("%Y-%m-%d"),
-                "Item": item_
+                "Item": item_name, "Quantity": qty,
+                "Total Cost": total_cost, "Wallet Left": new_balance_spend, "Type": "Spend"
+            }])
+            new_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
+            st.rerun()
+
+with tab2:
+    st.subheader("Add Money")
+    top_up_amount = st.number_input("Amount to add ($)", min_value=0.0, step=1.0)
+    if st.button("Confirm Top Up", key="topup_btn", use_container_width=True):
+        topup_entry = pd.DataFrame([{
+            "Date": datetime.now().strftime("%Y-%m-%d"),
+            "Item": "CASH TOP UP", "Quantity": 1,
+            "Total Cost": 0, "Wallet Left": current_balance + top_up_amount, "Type": "TopUp"
+        }])
+        topup_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
+        st.balloons()
+        st.rerun()
+
+with tab3:
+    st.subheader("Lend Money")
+    friend = st.text_input("Who is borrowing?")
+    l_amount = st.number_input("Amount to lend ($)", min_value=0.0, step=1.0)
+    if st.button("Confirm Loan", key="lend_btn", use_container_width=True):
+        if friend:
+            new_balance_lend = current_balance - l_amount
+            lend_entry = pd.DataFrame([{
+                "Date": datetime.now().strftime("%Y-%m-%d"),
+                "Item": f"LENT: {friend}", "Quantity": 1,
+                "Total Cost": l_amount, "Wallet Left": new_balance_lend, "Type": "Lend"
+            }])
+            lend_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
+            st.warning(f"Reminder: Get ${l_amount:.2f} back from {friend}")
+            st.rerun()
+
+with tab4:
+    st.subheader("Physical Cash Count")
+    c1, c2 = st.columns(2)
+    with c1:
+        n100 = st.number_input("$100 Bills", min_value=0, step=1)
+        n50 = st.number_input("$50 Bills", min_value=0, step=1)
+        n10 = st.number_input("$10 Bills", min_value=0, step=1)
+        n5 = st.number_input("$5 Bills", min_value=0, step=1)
+        n2 = st.number_input("$2 Bills", min_value=0, step=1)
+    with c2:
+        c50 = st.number_input("50¢ Coins", min_value=0, step=1)
+        c20 = st.number_input("20¢ Coins", min_value=0, step=1)
+        c10 = st.number_input("10¢ Coins", min_value=0, step=1)
+        c05 = st.number_input("5¢ Coins", min_value=0, step=1)
+        c01 = st.number_input("1¢ Coins", min_value=0, step=1)
+
+    physical_total = (n100*100) + (n50*50) + (n10*10) + (n5*5) + (n2*2) + \
+                     (c50*0.50) + (c20*0.20) + (c10*0.10) + (c05*0.05) + (c01*0.01)
+
+    st.divider()
+    st.write(f"### Cash in Hand: **${physical_total:.2f}**")
+    diff = physical_total - current_balance
+    if abs(diff) < 0.01:
+        st.success("✅ Perfectly matches the app!")
+    elif diff > 0:
+        st.warning(f"🤔 Extra money: +${diff:.2f}")
+    else:
+        st.error(f"❌ Missing money: -${abs(diff):.2f}")
+
+# --- HISTORY ---
+st.divider()
+st.header("📊 History")
+if not log_df.empty:
+    st.dataframe(log_df.iloc[::-1], use_container_width=True)
+    if st.button("🧨 Wipe All Data"):
+        if os.path.exists(log_file): os.remove(log_file)
+        st.rerun()
