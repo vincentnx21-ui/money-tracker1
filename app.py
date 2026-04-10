@@ -1,86 +1,95 @@
-# --- ADVANCED SUPERADMIN SPACE ---
-if choice == "🛠️ SUPERADMIN SPACE":
-    if current_user != SUPER_USER:
-        st.error("🚨 SECURITY BREACH: Unauthorized Access")
-    else:
-        st.title("🛡️ System Command Center")
-        
-        # 1. TOP ROW: SYSTEM METRICS
-        total_users = len(user_df) if not user_df.empty else 0
-        total_tx = len(log_df[log_df["Type"] != "MenuSetup"]) if not log_df.empty else 0
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Registered Accounts", total_users)
-        col2.metric("Total Transactions", total_tx)
-        col3.metric("System Status", "ONLINE", delta="Stable")
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import os
 
-        st.divider()
+# --- 1. CONFIG & SYSTEM SETUP ---
+USER_FILE = "users.csv"
+LOG_FILE = "money_tracker.csv"
+SUPER_USER = "Vincent21"
+SUPER_PASS = "3123"
 
-        # 2. TABBED MANAGEMENT
-        adm_tab1, adm_tab2, adm_tab3 = st.tabs([
-            "👥 User Management", 
-            "📂 Global Logs", 
-            "⚙️ System Settings"
-        ])
+st.set_page_config(page_title="Command Center", layout="wide")
 
-        with adm_tab1:
-            st.subheader("Account Registry (Decoded)")
-            if not user_df.empty:
-                # Add a search bar for users
-                search_query = st.text_input("🔍 Search Username", "")
-                filtered_users = user_df[user_df["Username"].str.contains(search_query, case=False)]
-                
-                # Display the table
-                st.dataframe(filtered_users, use_container_width=True)
+# Helper to load data
+def load_data(file):
+    if os.path.exists(file):
+        return pd.read_csv(file, dtype=str)
+    return pd.DataFrame()
 
-                # ADVANCED FEATURE: Delete User
-                st.divider()
-                user_to_kick = st.selectbox("Select User to Remove", ["-- Select --"] + user_df["Username"].tolist())
-                if st.button("❌ Terminate Account", type="primary"):
-                    if user_to_kick != "-- Select --" and user_to_kick != SUPER_USER:
-                        new_users = user_df[user_df["Username"] != user_to_kick]
-                        new_users.to_csv(USER_FILE, index=False)
-                        st.success(f"Account {user_to_kick} deleted.")
-                        st.rerun()
-            else:
-                st.info("No users registered yet.")
+user_df = load_data(USER_FILE)
+log_df = load_data(LOG_FILE)
 
-        with adm_tab2:
-            st.subheader("Live Activity Stream")
-            # Filter out the setup rows for a clean audit
-            activity_only = log_df[log_df["Type"].isin(["Spend", "TopUp", "Lend"])]
-            
-            # Multi-select filter by user
-            user_filter = st.multiselect("Filter by User", options=log_df["User"].unique())
-            if user_filter:
-                activity_only = activity_only[activity_only["User"].isin(user_filter)]
-            
-            st.dataframe(activity_only.iloc[::-1], use_container_width=True)
+# --- 2. AUTHENTICATION BARRIER ---
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+    st.session_state.user = None
 
-        with adm_tab3:
-            st.subheader("Global Menu Controller")
-            c1, c2, c3, c4 = st.columns(4)
-            al = c1.text_input("New Location")
-            as_ = c2.text_input("New Stall")
-            ai = c3.text_input("New Product")
-            ap = c4.number_input("Unit Price", step=0.10)
-            
-            if st.button("➕ Inject into Global Menu", use_container_width=True):
-                if al and as_ and ai:
-                    new_item = pd.DataFrame([{
-                        "Date": "MASTER", "User": "ADMIN", "Location": al, 
-                        "Shop": as_, "Item": ai, "Quantity": "1", 
-                        "Total Cost": str(ap), "Wallet Left": "0", "Type": "MenuSetup"
-                    }])
-                    new_item.to_csv(LOG_FILE, mode='a', index=False)
-                    st.success("Menu updated successfully!")
-                    st.rerun()
-
-            st.divider()
-            st.subheader("Danger Zone")
-            if st.button("🧨 Factory Reset (Wipe All Transactions)", type="primary", use_container_width=True):
-                # Keeps menu but kills all spending
-                clean_logs = log_df[log_df["Type"] == "MenuSetup"]
-                clean_logs.to_csv(LOG_FILE, index=False)
-                st.warning("All user data has been wiped.")
+if not st.session_state.auth:
+    # Login / Register UI (Same as before)
+    t1, t2 = st.tabs(["🔒 Login", "📝 Register"])
+    with t1:
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if u == SUPER_USER and p == SUPER_PASS:
+                st.session_state.auth, st.session_state.user = True, u
                 st.rerun()
+            elif not user_df.empty:
+                match = user_df[(user_df["Username"] == u) & (user_df["Password"] == p)]
+                if not match.empty:
+                    st.session_state.auth, st.session_state.user = True, u
+                    st.rerun()
+            st.error("Invalid credentials")
+    # ... (Register logic here)
+    st.stop()
+
+# --- 3. SIDEBAR NAVIGATION (Define 'choice' here!) ---
+current_user = st.session_state.user
+
+with st.sidebar:
+    st.title(f"👤 {current_user}")
+    
+    # Start with basic options
+    menu = ["🏠 Home", "🛒 Order", "💵 Top Up", "📊 History"]
+    
+    # Inject Admin Space ONLY for Vincent
+    if current_user == SUPER_USER:
+        st.divider()
+        st.warning("ADMIN MODE")
+        menu.append("🛠️ SUPERADMIN SPACE")
+    
+    # THIS DEFINES THE VARIABLE 'choice'
+    choice = st.radio("Navigation", menu)
+    
+    if st.button("Logout"):
+        st.session_state.auth = False
+        st.rerun()
+
+# --- 4. CONDITIONAL SPACES (Use 'choice' here!) ---
+
+if choice == "🛠️ SUPERADMIN SPACE":
+    st.title("🛡️ Advanced Command Center")
+    
+    # User Management Tab
+    tab_users, tab_logs, tab_settings = st.tabs(["Accounts", "Global Logs", "Control"])
+    
+    with tab_users:
+        st.subheader("Decoded Credentials")
+        st.dataframe(user_df, use_container_width=True) # Now readable!
+        
+        delete_user = st.selectbox("Delete Account", ["-- Select --"] + user_df["Username"].tolist())
+        if st.button("Delete User") and delete_user != "-- Select --":
+            new_df = user_df[user_df["Username"] != delete_user]
+            new_df.to_csv(USER_FILE, index=False)
+            st.rerun()
+
+    with tab_logs:
+        st.subheader("Every Transaction in System")
+        st.dataframe(log_df.iloc[::-1], use_container_width=True)
+
+elif choice == "🏠 Home":
+    st.header(f"Welcome back, {current_user}")
+    # User-specific balance and stats logic goes here
+
+# ... add 'elif choice == "🛒 Order":' etc. below
