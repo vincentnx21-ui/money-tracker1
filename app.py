@@ -47,17 +47,14 @@ st.metric("App Balance", f"${current_balance:,.2f}")
 
 tab1, tab2, tab3, tab4 = st.tabs(["🛒 Purchase", "💵 Top Up", "🤝 Lend", "🪙 Audit"])
 
-# --- TAB 1: PURCHASE (FIXED PRICE LOGIC) ---
+# --- TAB 1: PURCHASE ---
 with tab1:
     st.subheader("Order Builder")
-    
-    # Shop Selection
     all_shops = log_df["Shop"].unique().tolist() if not log_df.empty else []
     shop_name = st.selectbox("Where are you?", ["-- New Shop --"] + [s for s in all_shops if s != "N/A"])
     if shop_name == "-- New Shop --":
         shop_name = st.text_input("Enter Shop Name")
 
-    # Clean Menu Logic (Only show base items)
     clean_items = []
     if not log_df.empty and shop_name != "-- New Shop --":
         raw_items = log_df[(log_df["Shop"] == shop_name) & (log_df["Type"] == "Spend")]["Item"].unique().tolist()
@@ -70,28 +67,18 @@ with tab1:
         base_price = st.number_input("Base Price ($)", min_value=0.0, step=0.10)
     else:
         i_name = selection
-        # --- THE FIX ---
-        # Look for the last time you bought this item WITHOUT any '+' in the name (Clean Base Price)
         base_match = log_df[(log_df["Shop"] == shop_name) & (log_df["Item"] == selection)]
-        
         if not base_match.empty:
-            # We found a clean version!
             last_row = base_match.iloc[-1]
             base_price = last_row["Total Cost"] / last_row["Quantity"]
         else:
-            # If we never bought it "clean", we take the first purchase of it and subtract nothing 
-            # (In this case, user might need to adjust price manually once)
             match_any = log_df[(log_df["Shop"] == shop_name) & (log_df["Item"].str.startswith(selection))]
-            last_row = match_any.iloc[-1]
-            base_price = last_row["Total Cost"] / last_row["Quantity"]
-            st.warning("Note: Last order had extras. Please check if this base price is correct.")
-            
+            base_price = match_any.iloc[-1]["Total Cost"] / match_any.iloc[-1]["Quantity"] if not match_any.empty else 0.0
         base_price = st.number_input("Base Price ($)", value=float(base_price), step=0.10)
 
     st.divider()
-    st.write("**Add Extras (One at a time):**")
     ca, cb, cc = st.columns([2, 1, 1])
-    en = ca.text_input("Extra name", key="en")
+    en = ca.text_input("Extra", key="en")
     ep = cb.number_input("$", min_value=0.0, step=0.10, key="ep")
     if cc.button("➕ Add"):
         if en:
@@ -109,21 +96,16 @@ with tab1:
         st.session_state.addons_list = []
         st.rerun()
 
-    st.divider()
     qty = st.number_input("Quantity", min_value=1, step=1)
-    final_unit_price = base_price + total_ex
-    final_total = final_unit_price * qty
-    st.write(f"### Total: **${final_total:.2f}**")
-
+    final_total = (base_price + total_ex) * qty
     if st.button("Confirm Order", use_container_width=True, type="primary"):
-        if i_name and shop_name:
-            full_save_name = i_name + (" +" + " +".join(ex_names) if ex_names else "")
-            new_row = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Item": full_save_name, "Shop": shop_name, "Quantity": qty, "Total Cost": final_total, "Wallet Left": current_balance - final_total, "Type": "Spend"}])
-            new_row.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
-            st.session_state.addons_list = []
-            st.rerun()
+        full_save_name = i_name + (" +" + " +".join(ex_names) if ex_names else "")
+        new_row = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "Item": full_save_name, "Shop": shop_name, "Quantity": qty, "Total Cost": final_total, "Wallet Left": current_balance - final_total, "Type": "Spend"}])
+        new_row.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
+        st.session_state.addons_list = []
+        st.rerun()
 
-# --- OTHER TABS (TOP UP, LEND, AUDIT) ---
+# --- OTHER TABS ---
 with tab2:
     top = st.number_input("Amount", min_value=0.0, key="top_up")
     if st.button("Top Up"):
@@ -139,9 +121,31 @@ with tab3:
 
 with tab4:
     st.subheader("Cash Audit")
-    # Audit logic goes here...
+    # (Audit math goes here)
 
-# --- HISTORY ---
+# --- THE HISTORY & DELETE SECTION (ALWAYS VISIBLE) ---
 st.divider()
-st.header("📊 History")
-st.dataframe(log_df.iloc[::-1], use_container_width=True)
+st.header("📊 History & Settings")
+
+if not log_df.empty:
+    st.dataframe(log_df.iloc[::-1], use_container_width=True)
+    
+    # NEW: CLEARLY VISIBLE DELETE TOOLS
+    st.subheader("🗑️ Delete Transactions")
+    rows_to_delete = st.multiselect(
+        "Select specific rows to remove:", 
+        options=log_df.index, 
+        format_func=lambda x: f"{log_df.loc[x, 'Date']} | {log_df.loc[x, 'Item']} (${log_df.loc[x, 'Total Cost']:.2f})"
+    )
+    
+    col_del1, col_del2 = st.columns(2)
+    if col_del1.button("Delete Selected Rows", type="secondary", use_container_width=True):
+        log_df = log_df.drop(rows_to_delete)
+        log_df.to_csv(log_file, index=False)
+        st.rerun()
+
+    if col_del2.button("🧨 Wipe All Data", type="primary", use_container_width=True):
+        if os.path.exists(log_file): os.remove(log_file)
+        st.rerun()
+else:
+    st.info("No history found. Log a purchase to see options here!")
