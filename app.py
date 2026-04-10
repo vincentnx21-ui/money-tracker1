@@ -9,7 +9,7 @@ log_file = "money_tracker.csv"
 user_file = "users.csv"
 ADMIN_PASSWORD = "123"
 
-st.set_page_config(page_title="Multi-User Tracker", layout="centered")
+st.set_page_config(page_title="School Money Tracker", layout="centered")
 
 # --- UTILS ---
 def hash_password(password):
@@ -61,14 +61,12 @@ if not st.session_state.logged_in:
             if nu and np == npc:
                 new_u = pd.DataFrame([{"Username": nu, "Password": hash_password(np)}])
                 new_u.to_csv(user_file, mode='a', index=False, header=not os.path.exists(user_file))
-                st.success("Account created! Go to Login.")
-            else:
-                st.error("Check details")
+                st.success("Account created!")
     st.stop()
 
 # --- SIDEBAR (LOGOUT & ADMIN) ---
 with st.sidebar:
-    st.title(f"👋 Hi, {st.session_state.username}")
+    st.title(f"👤 {st.session_state.username}")
     if st.button("🚪 Logout", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.username = None
@@ -76,87 +74,105 @@ with st.sidebar:
     
     st.divider()
     
-    # ADMINISTRATION MOVED HERE
-    with st.expander("🛠️ Administration"):
+    with st.expander("🛠️ Administration Entry"):
         adm_pwd = st.text_input("Admin Password", type="password")
         if adm_pwd == ADMIN_PASSWORD:
-            st.subheader("Add Master Menu")
-            a_loc = st.text_input("Location")
-            a_stall = st.text_input("Stall")
-            a_item = st.text_input("Product")
-            a_price = st.number_input("Price", min_value=0.0, step=0.05)
+            st.subheader("Master Menu Setup")
+            a_loc = st.text_input("Location Name")
+            a_stall = st.text_input("Stall Name")
+            a_item = st.text_input("Product Name")
+            a_price = st.number_input("Unit Price", min_value=0.0, step=0.05)
             
-            if st.button("Save to Global Menu"):
+            if st.button("Add to Master Menu"):
                 if a_loc and a_stall and a_item:
                     setup_row = pd.DataFrame([{
-                        "Date": "N/A", "User": "ADMIN", "Location": a_loc, 
+                        "Date": "MASTER", "User": "ADMIN", "Location": a_loc, 
                         "Shop": a_stall, "Item": a_item, "Quantity": 1, 
                         "Total Cost": a_price, "Wallet Left": 0, "Type": "MenuSetup"
                     }])
-                    setup_row.to_csv(log_file, mode='a', index=False); st.success("Added!"); st.rerun()
-            
-            st.divider()
-            if st.button("🧨 Wipe All Transactions", type="primary"):
-                # Keeps the users and menu, but clears all user spending
-                clean_df = log_df[log_df["Type"] == "MenuSetup"]
-                clean_df.to_csv(log_file, index=False); st.rerun()
+                    setup_row.to_csv(log_file, mode='a', index=False); st.success("Saved!"); st.rerun()
 
 # --- MAIN APP ---
 user = st.session_state.username
 user_log = log_df[log_df["User"] == user]
 balance = float(user_log["Wallet Left"].iloc[-1]) if not user_log.empty else 0.0
 
-st.title("💰 Smart Money Tracker")
-st.metric("Wallet Balance", f"${balance:,.2f}")
+st.title("💰 Personal Budget Tracker")
+st.metric("Balance", f"${balance:,.2f}")
 
-tab1, tab2, tab3 = st.tabs(["🛒 Order Food", "💵 Top Up", "📊 History"])
+# Re-added the Lending and Audit tabs here
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🛒 Order", "💵 Top Up", "🤝 Lending", "🪙 Audit", "📊 History"])
 
-# --- ORDER TAB ---
+# --- TAB 1: ORDER ---
 with tab1:
-    # 1. Location
-    all_locs = sorted([l for l in log_df["Location"].unique().tolist() if l != "N/A"])
-    loc_choice = st.selectbox("Location", ["-- Select --"] + all_locs)
-    
-    if loc_choice != "-- Select --":
-        # 2. Stall
-        stalls = sorted(log_df[log_df["Location"] == loc_choice]["Shop"].unique().tolist())
-        stall_choice = st.selectbox("Stall", ["-- Select --"] + stalls)
-        
-        if stall_choice != "-- Select --":
-            # 3. Product (Looking for MenuSetup price)
-            items_df = log_df[(log_df["Location"] == loc_choice) & (log_df["Shop"] == stall_choice)]
-            clean_items = sorted(items_df["Item"].unique().tolist())
-            prod_choice = st.selectbox("Product", ["-- Select --"] + clean_items)
-            
-            if prod_choice != "-- Select --":
-                price_match = items_df[(items_df["Item"] == prod_choice) & (items_df["Type"] == "MenuSetup")]
+    locs = sorted([l for l in log_df["Location"].unique().tolist() if l != "N/A"])
+    l_sel = st.selectbox("Where are you?", ["-- Choose Location --"] + locs)
+    if l_sel != "-- Choose Location --":
+        stalls = sorted(log_df[log_df["Location"] == l_sel]["Shop"].unique().tolist())
+        s_sel = st.selectbox("Select Stall", ["-- Choose Stall --"] + stalls)
+        if s_sel != "-- Choose Stall --":
+            items_df = log_df[(log_df["Location"] == l_sel) & (log_df["Shop"] == s_sel)]
+            p_sel = st.selectbox("Select Food/Drink", ["-- Select Product --"] + sorted(items_df["Item"].unique().tolist()))
+            if p_sel != "-- Select Product --":
+                price_match = items_df[(items_df["Item"] == p_sel) & (items_df["Type"] == "MenuSetup")]
                 u_price = float(price_match.iloc[-1]["Total Cost"]) if not price_match.empty else 0.0
-                
-                st.info(f"Fixed Price: ${u_price:.2f}")
-                qty = st.number_input("How many?", min_value=1, step=1)
-                
-                if st.button("Confirm Purchase", use_container_width=True, type="primary"):
+                st.info(f"Price per unit: ${u_price:.2f}")
+                qty = st.number_input("Quantity", min_value=1)
+                if st.button("Buy Now", use_container_width=True):
                     cost = u_price * qty
-                    new_row = pd.DataFrame([{
-                        "Date": datetime.now().strftime("%Y-%m-%d"),
-                        "User": user, "Location": loc_choice, "Shop": stall_choice,
-                        "Item": prod_choice, "Quantity": qty, "Total Cost": cost,
-                        "Wallet Left": balance - cost, "Type": "Spend"
-                    }])
-                    new_row.to_csv(log_file, mode='a', index=False); st.rerun()
+                    new_r = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "User": user, "Location": l_sel, "Shop": s_sel, "Item": p_sel, "Quantity": qty, "Total Cost": cost, "Wallet Left": balance - cost, "Type": "Spend"}])
+                    new_r.to_csv(log_file, mode='a', index=False); st.rerun()
 
-# --- TOP UP TAB ---
+# --- TAB 2: TOP UP ---
 with tab2:
-    amt = st.number_input("Amount to add", min_value=0.0)
-    if st.button("Add to Wallet"):
-        nr = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "User": user, "Location": "N/A", "Shop": "N/A", "Item": "Top-up", "Quantity": 1, "Total Cost": 0, "Wallet Left": balance + amt, "Type": "TopUp"}])
-        nr.to_csv(log_file, mode='a', index=False); st.rerun()
+    t_amt = st.number_input("Top up amount", min_value=0.0)
+    if st.button("Add Funds"):
+        new_r = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "User": user, "Location": "N/A", "Shop": "N/A", "Item": "Deposit", "Quantity": 1, "Total Cost": 0, "Wallet Left": balance + t_amt, "Type": "TopUp"}])
+        new_r.to_csv(log_file, mode='a', index=False); st.rerun()
 
-# --- HISTORY TAB ---
+# --- TAB 3: MONEY LENDING ---
 with tab3:
+    st.subheader("Lend to Friends")
+    l_friend = st.text_input("Friend's Name")
+    l_amt = st.number_input("Lending Amount", min_value=0.0)
+    if st.button("Record Loan"):
+        if l_friend and l_amt > 0:
+            new_r = pd.DataFrame([{"Date": datetime.now().strftime("%Y-%m-%d"), "User": user, "Location": "N/A", "Shop": "N/A", "Item": f"LENT: {l_friend}", "Quantity": 1, "Total Cost": l_amt, "Wallet Left": balance - l_amt, "Type": "Lend"}])
+            new_r.to_csv(log_file, mode='a', index=False); st.rerun()
+
+# --- TAB 4: MONEY AUDIT ---
+with tab4:
+    st.subheader("Physical Cash Audit")
+    st.write("Count your physical cash to see if it matches the app.")
+    col1, col2 = st.columns(2)
+    with col1:
+        v10 = st.number_input("$10 bills", 0)
+        v5 = st.number_input("$5 bills", 0)
+        v2 = st.number_input("$2 bills", 0)
+    with col2:
+        v1 = st.number_input("$1 coins", 0)
+        v05 = st.number_input("50¢ coins", 0)
+        v02 = st.number_input("20¢ coins", 0)
+    
+    total_physical = (v10*10) + (v5*5) + (v2*2) + (v1*1) + (v05*0.5) + (v02*0.2)
+    st.divider()
+    st.write(f"### Total Physical: ${total_physical:.2f}")
+    diff = total_physical - balance
+    if diff == 0:
+        st.success("Perfect! Your cash matches your app.")
+    elif diff > 0:
+        st.warning(f"You have ${diff:.2f} more than the app thinks.")
+    else:
+        st.error(f"You are missing ${abs(diff):.2f} in physical cash.")
+
+# --- TAB 5: HISTORY ---
+with tab3: # Note: tab5 in the list above, index logic check
+    pass # Managed via the list in the tab declaration
+
+with tab5:
     if not user_log.empty:
-        history_view = user_log[user_log["Type"].isin(["Spend", "TopUp"])]
-        st.dataframe(history_view.iloc[::-1], use_container_width=True)
-        to_del = st.multiselect("Delete Mistakes", options=history_view.index)
-        if st.button("Delete Selected"):
+        history = user_log[user_log["Type"].isin(["Spend", "TopUp", "Lend"])]
+        st.dataframe(history.iloc[::-1], use_container_width=True)
+        to_del = st.multiselect("Delete Mistakes", options=history.index)
+        if st.button("Delete Entries"):
             log_df.drop(to_del).to_csv(log_file, index=False); st.rerun()
