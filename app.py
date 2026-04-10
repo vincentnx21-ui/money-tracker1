@@ -105,7 +105,7 @@ with tab1:
             st.session_state.addons_list = []
             st.rerun()
 
-# --- TAB 2, 3, 4 ---
+# --- TAB 2, 3, 4 (SIMPLIFIED FOR SPACE) ---
 with tab2:
     top = st.number_input("Amount", min_value=0.0, key="top_up")
     if st.button("Top Up"):
@@ -121,42 +121,43 @@ with tab3:
 
 with tab4:
     st.subheader("Cash Audit")
-    # Audit math...
+    # (Audit math remains same as previous version)
 
-# --- HISTORY & MENU MANAGEMENT ---
+# --- THE FIX: ALWAYS VISIBLE DELETE SECTION ---
 st.divider()
-st.header("⚙️ Settings & Data")
+st.header("⚙️ Manage Data & Menus")
 
 if not log_df.empty:
-    # 1. DELETE FROM MENU (New Feature)
-    with st.expander("📝 Manage Shop & Item Menus", expanded=False):
-        st.write("Deleting from here removes the item/shop from your dropdown menus by deleting its history.")
-        
-        m_col1, m_col2 = st.columns(2)
-        with m_col1:
-            shop_to_wipe = st.selectbox("Wipe Shop from Menu", ["-- Select --"] + all_shops)
-            if st.button("Delete Shop Menu"):
-                log_df = log_df[log_df["Shop"] != shop_to_wipe]
-                log_df.to_csv(log_file, index=False)
-                st.rerun()
-        
-        with m_col2:
-            item_to_wipe = st.selectbox("Wipe Item from Menu", ["-- Select --"] + clean_items)
-            if st.button("Delete Item Menu"):
-                # Remove any item that starts with this name (to include variations with extras)
-                log_df = log_df[~log_df["Item"].str.startswith(item_to_wipe)]
-                log_df.to_csv(log_file, index=False)
-                st.rerun()
+    # --- 1. DELETE FROM MENU (PURGE MEMORY) ---
+    st.subheader("🧹 Clean Up Menus")
+    m_col1, m_col2 = st.columns(2)
+    with m_col1:
+        shop_to_wipe = st.selectbox("Forget Shop", ["-- Select --"] + all_shops)
+        if st.button("Delete Shop from Menu"):
+            log_df = log_df[log_df["Shop"] != shop_to_wipe]
+            log_df.to_csv(log_file, index=False)
+            st.rerun()
+    with m_col2:
+        item_to_wipe = st.selectbox("Forget Item", ["-- Select --"] + clean_items)
+        if st.button("Delete Item from Menu"):
+            log_df = log_df[~log_df["Item"].str.startswith(item_to_wipe)]
+            log_df.to_csv(log_file, index=False)
+            st.rerun()
 
-    # 2. DELETE FROM HISTORY (Existing Feature)
-    with st.expander("📊 Transaction History", expanded=True):
-        st.dataframe(log_df.iloc[::-1], use_container_width=True)
-        rows_to_del = st.multiselect("Select rows to delete:", options=log_df.index, format_func=lambda x: f"{log_df.loc[x, 'Item']} (${log_df.loc[x, 'Total Cost']:.2f})")
-        
-        c1, c2 = st.columns(2)
-        if c1.button("Delete Selected Transactions"):
-            log_df.drop(rows_to_del).to_csv(log_file, index=False)
-            st.rerun()
-        if c2.button("🧨 Wipe All Data", type="primary"):
-            if os.path.exists(log_file): os.remove(log_file)
-            st.rerun()
+    st.divider()
+
+    # --- 2. DELETE FROM HISTORY (FIX MISTAKES) ---
+    st.subheader("📊 Transaction History")
+    st.dataframe(log_df.iloc[::-1], use_container_width=True)
+    
+    rows_to_del = st.multiselect("Select transactions to remove:", options=log_df.index, format_func=lambda x: f"{log_df.loc[x, 'Item']} (${log_df.loc[x, 'Total Cost']:.2f})")
+    
+    d_col1, d_col2 = st.columns(2)
+    if d_col1.button("Delete Selected Transactions"):
+        log_df.drop(rows_to_del).to_csv(log_file, index=False)
+        st.rerun()
+    if d_col2.button("🧨 Wipe All Data", type="primary"):
+        if os.path.exists(log_file): os.remove(log_file)
+        st.rerun()
+else:
+    st.info("No data found yet. Start by logging a purchase!")
