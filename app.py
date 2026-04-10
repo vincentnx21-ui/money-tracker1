@@ -24,12 +24,9 @@ log_cols = ["Date", "Item", "Quantity", "Total Cost", "Wallet Left", "Type"]
 log_df = load_data(log_file, log_cols)
 
 # --- AUTOMATIC MENU LOGIC ---
-# We extract unique items from history that were 'Spend' types
 if not log_df.empty:
-    # Get only 'Spend' rows, then find the latest price for each unique item
     history_spend = log_df[log_df["Type"] == "Spend"]
     if not history_spend.empty:
-        # This creates a "Menu" by taking the most recent price you paid for every item
         auto_menu = history_spend.sort_values("Date").groupby("Item").tail(1)[["Item", "Total Cost", "Quantity"]]
         auto_menu["Unit Price"] = auto_menu["Total Cost"] / auto_menu["Quantity"]
     else:
@@ -48,7 +45,6 @@ tab1, tab2 = st.tabs(["🛒 Log Purchase", "💵 Top Up"])
 with tab1:
     st.subheader("Purchase")
     
-    # Choice 1: Pick from things you've bought before
     if not auto_menu.empty:
         existing_items = ["-- New Item --"] + auto_menu["Item"].tolist()
         selection = st.selectbox("Select an item from your history:", existing_items)
@@ -60,27 +56,54 @@ with tab1:
         unit_price = st.number_input("Price for 1 ($)", min_value=0.0, step=0.01)
     else:
         item_name = selection
-        # Auto-fill the price based on what you paid last time
         unit_price = float(auto_menu.loc[auto_menu["Item"] == selection, "Unit Price"].values[0])
         st.info(f"Last paid: ${unit_price:.2f} per unit")
 
     qty = st.number_input("Quantity", min_value=1, step=1)
     total_cost = qty * unit_price
-    new_balance = current_balance - total_cost
+    new_balance_spend = current_balance - total_cost
 
-    st.write(f"Total: **${total_cost:.2f}** | New Balance: **${new_balance:.2f}**")
+    st.write(f"Total: **${total_cost:.2f}**")
 
     if st.button("Confirm Purchase", use_container_width=True):
         if item_name:
             new_entry = pd.DataFrame([{
                 "Date": datetime.now().strftime("%Y-%m-%d"),
                 "Item": item_name, "Quantity": qty,
-                "Total Cost": total_cost, "Wallet Left": new_balance, "Type": "Spend"
+                "Total Cost": total_cost, "Wallet Left": new_balance_spend, "Type": "Spend"
             }])
             new_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
             st.rerun()
 
 with tab2:
     st.subheader("Add Money")
-    top_up = st.number_input("Amount ($)", min_value=0.0, step=1.0)
+    top_up_amount = st.number_input("Amount to add ($)", min_value=0.0, step=1.0)
+    new_balance_topup = current_balance + top_up_amount
+    
     if st.button("Confirm Top Up", use_container_width=True):
+        topup_entry = pd.DataFrame([{
+            "Date": datetime.now().strftime("%Y-%m-%d"),
+            "Item": "CASH TOP UP", "Quantity": 1,
+            "Total Cost": 0, "Wallet Left": new_balance_topup, "Type": "TopUp"
+        }])
+        topup_entry.to_csv(log_file, mode='a', header=not os.path.isfile(log_file), index=False)
+        st.balloons()
+        st.rerun()
+
+# --- HISTORY ---
+st.divider()
+st.header("📊 History")
+if not log_df.empty:
+    st.dataframe(log_df.iloc[::-1], use_container_width=True)
+    
+    with st.expander("🗑️ Delete History / Correct Mistakes"):
+        rows_to_del = st.multiselect("Select rows:", options=log_df.index, 
+                                     format_func=lambda x: f"{log_df.iloc[x]['Date']} - {log_df.iloc[x]['Item']}")
+        if st.button("Delete Selected"):
+            log_df = log_df.drop(rows_to_del)
+            log_df.to_csv(log_file, index=False)
+            st.rerun()
+
+    if st.button("🧨 Wipe All Data"):
+        if os.path.exists(log_file): os.remove(log_file)
+        st.rerun()
